@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>4-bit Microcontroller Simulator</title>
+  <style>
+    :root {
+      --primary-color: #2c3e50;
+      --secondary-color: #3498db;
+      --background: #f8f9fa;
+      --card-bg: #ffffff;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: var(--background);
+      color: var(--primary-color);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 3fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      background: var(--card-bg);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+    }
+    .code-panel {
+      grid-column: 1 / 3;
+    }
+    h1 {
+      color: var(--secondary-color);
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 15px 0;
+      align-items: center;
+    }
+    button {
+      padding: 8px 15px;
+      border: none;
+      border-radius: 5px;
+      background: var(--secondary-color);
+      color: white;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      opacity: 0.9;
+    }
+    select {
+      padding: 8px;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      background: var(--card-bg);
+    }
+    .register {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .register-item {
+      padding: 10px;
+      background: #e8f4ff;
+      border-radius: 5px;
+      text-align: center;
+    }
+    .memory-view {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 5px;
+    }
+    .memory-cell {
+      padding: 5px;
+      background: #f0f0f0;
+      text-align: center;
+      font-size: 0.9em;
+    }
+    .instruction-set {
+      margin-top: 20px;
+      padding: 15px;
+      background: #fff3e6;
+      border-radius: 5px;
+    }
+    .highlight {
+      background: #e3f2fd !important;
+      font-weight: bold;
+    }
+    .console {
+      background: #1e1e1e;
+      color: #ffffff;
+      padding: 15px;
+      border-radius: 5px;
+      font-family: monospace;
+      min-height: 100px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>4-bit Microcontroller Simulator</h1>
+  
+  <div class="container">
+    <!-- Code Editor Panel -->
+    <div class="panel code-panel">
+      <h2>Code Editor</h2>
+      <textarea id="codeArea">
+; Fibonacci Example Program with LOAD/STORE (6 Iterations)
+; This program calculates the Fibonacci sequence for 6 iterations.
+; It demonstrates using memory:
+;   - STORE saves the current Fibonacci number into memory cell 0.
+;   - LOAD retrieves a value from memory cell 0.
+;
+MOV R0, #0         ; Initialize F0 = 0
+MOV R1, #1         ; Initialize F1 = 1
+MOV R3, #6         ; Set loop counter to 6 iterations
+STORE R1, #0       ; Store F1 (1) into memory cell 0
+LOOP:
+  ; Calculate F(n) = F(n-2) + F(n-1)
+  MOV R2, R0       ; Copy F(n-2) into R2
+  ADD R2, R1       ; R2 = R0 + R1 -> New Fibonacci number
+  ; Update registers for next iteration
+  MOV R0, R1       ; F(n-2) becomes the old F(n-1)
+  MOV R1, R2       ; F(n-1) becomes the new Fibonacci number
+  STORE R1, #0     ; Store the new Fibonacci number into memory cell 0
+  ; Decrement the loop counter:
+  MOV R2, #1       
+  SUB R3, R2       
+  CMP R3           ; Check if counter reached zero
+  JNZ LOOP         ; If not, repeat loop
+      </textarea>
+      <div class="toolbar">
+        <button onclick="compile()">Compile</button>
+        <button onclick="step()">Step ▶</button>
+        <button onclick="run()">Run ⏵</button>
+        <button onclick="stop()">Stop ⏹</button>
+        <button onclick="reset()">Reset ↺</button>
+        <select id="speed" onchange="setSpeed(this.value)">
+          <option value="500">0.5x</option>
+          <option value="200" selected>1x</option>
+          <option value="100">2x</option>
+          <option value="50">4x</option>
+        </select>
+        <select id="exampleSelect" onchange="loadExample(this.value)">
+          <option value="">-- Select Example Code --</option>
+          <option value="fibonacci">Fibonacci with LOAD/STORE</option>
+          <option value="arithmetic">Simple Arithmetic</option>
+          <option value="ifelse">If/Else Condition</option>
+          <option value="memory">Memory Manipulation</option>
+        </select>
+      </div>
+      <div class="console" id="console"></div>
+    </div>
+
+    <!-- Registers & Flags Panel -->
+    <div class="panel">
+      <h2>Registers & Flags</h2>
+      <div class="register">
+        <div class="register-item" id="R0">R0: 0</div>
+        <div class="register-item" id="R1">R1: 0</div>
+        <div class="register-item" id="R2">R2: 0</div>
+        <div class="register-item" id="R3">R3: 0</div>
+      </div>
+      <div class="flags">
+        <h3>Status Flags</h3>
+        <div id="flags">Zero: 0 | Carry: 0 | Overflow: 0</div>
+      </div>
+    </div>
+
+    <!-- Memory & PC Panel -->
+    <div class="panel">
+      <h2>Memory & PC</h2>
+      <div class="pc-display" id="pc">PC: 0x0</div>
+      <h3>Memory Map</h3>
+      <div class="memory-view" id="memory"></div>
+    </div>
+
+    <!-- Instruction Set & Explanation Panel -->
+    <div class="panel instruction-set">
+      <h2>Instruction Set</h2>
+      <h3>Basic Instructions</h3>
+      <ul>
+        <li><code>MOV Rd, Rs</code> - Move content from one register to another.</li>
+        <li><code>MOV Rd, #n</code> - Load an immediate value (0-15) into a register.</li>
+        <li><code>ADD Rd, Rs</code> - Add value from source register to destination register.</li>
+        <li><code>SUB Rd, Rs</code> - Subtract value from source register from destination register.</li>
+        <li><code>AND Rd, Rs</code> - Bitwise AND between two registers.</li>
+        <li><code>OR Rd, Rs</code> - Bitwise OR between two registers.</li>
+        <li><code>CMP Rs</code> - Compare register with zero (sets ZERO flag if equal).</li>
+        <li><code>JMP label</code> - Unconditional jump to label.</li>
+        <li><code>JZ label</code> - Jump if ZERO flag is set.</li>
+        <li><code>JNZ label</code> - Jump if ZERO flag is not set.</li>
+        <li><code>LOAD Rd, #n</code> - Load value from memory cell n into register Rd.</li>
+        <li><code>STORE Rs, #n</code> - Store value from register Rs into memory cell n.</li>
+      </ul>
+      <h3>Example Explanations</h3>
+      <p>
+        The Fibonacci example initializes two registers with the first Fibonacci numbers (0 and 1) and calculates subsequent numbers in a loop for 6 iterations. Each iteration stores the current Fibonacci number into memory cell 0 using the <code>STORE</code> instruction.
+      </p>
+      <p>
+        The Memory Map on the right simulates a small RAM (16 cells). With the new <code>LOAD</code> and <code>STORE</code> instructions, your program can now interact with this memory.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // Simulator microcontroller object
+    const uC = {
+      registers: [0, 0, 0, 0],
+      memory: new Array(16).fill(0),
+      pc: 0,
+      flags: { zero: 0, carry: 0, overflow: 0 },
+      program: [],
+      labels: {},
+      running: false,
+      speed: 200
+    };
+
+    // Code examples for the combobox
+    function loadExample(example) {
+      const examples = {
+        fibonacci: `; Fibonacci Example Program with LOAD/STORE (6 Iterations)
+; This program calculates the Fibonacci sequence for 6 iterations.
+; It demonstrates using memory:
+;   - STORE saves the current Fibonacci number into memory cell 0.
+;   - LOAD retrieves a value from memory cell 0.
+;
+MOV R0, #0         ; Initialize F0 = 0
+MOV R1, #1         ; Initialize F1 = 1
+MOV R3, #6         ; Set loop counter to 6 iterations
+STORE R1, #0       ; Store F1 (1) into memory cell 0
+LOOP:
+  ; Calculate F(n) = F(n-2) + F(n-1)
+  MOV R2, R0       ; Copy F(n-2) into R2
+  ADD R2, R1       ; R2 = R0 + R1 -> New Fibonacci number
+  ; Update registers for next iteration
+  MOV R0, R1       ; F(n-2) becomes the old F(n-1)
+  MOV R1, R2       ; F(n-1) becomes the new Fibonacci number
+  STORE R1, #0     ; Store the new Fibonacci number into memory cell 0
+  ; Decrement loop counter:
+  MOV R2, #1       
+  SUB R3, R2       
+  CMP R3           ; Check if counter reached zero
+  JNZ LOOP         ; If not, repeat loop`,
+        arithmetic: `; Simple Arithmetic Example
+; Adds two numbers and subtracts a constant.
+MOV R0, #5       ; R0 = 5
+MOV R1, #3       ; R1 = 3
+ADD R0, R1       ; R0 = 5 + 3 = 8
+MOV R2, #2       ; R2 = 2
+SUB R0, R2       ; R0 = 8 - 2 = 6`,
+        ifelse: `; If/Else Condition Example
+; If R0 is zero then R1 becomes 1, else R1 becomes 2.
+MOV R0, #0
+CMP R0           ; Compare R0 with zero
+JNZ ELSE_PART    ; If R0 is not zero, jump to ELSE_PART
+MOV R1, #1       ; If R0 is zero, set R1 to 1
+JMP END_IF
+ELSE_PART:
+MOV R1, #2       ; Otherwise, set R1 to 2
+END_IF:`,
+        memory: `; Memory Manipulation Example
+; Store a value into memory and then load it.
+MOV R0, #7       ; R0 = 7
+STORE R0, #5     ; Store value 7 into memory cell 5
+MOV R1, #0       ; R1 = 0
+LOAD R1, #5      ; Load memory cell 5 into R1 (R1 should become 7)`
+      };
+      if(examples[example]) {
+        document.getElementById("codeArea").value = examples[example];
+      }
+    }
+
+    // Compiles the code, builds the program array and maps labels
+    function compile() {
+      uC.program = [];
+      uC.labels = {};
+      const code = document.getElementById('codeArea').value.split('\n');
+      let address = 0;
+
+      code.forEach(line => {
+        // Remove comments and trim spaces
+        line = line.split(';')[0].trim().toUpperCase();
+        if (!line) return;
+
+        // If the line is a label (ends with ":"), store it and skip
+        if (line.endsWith(':')) {
+          uC.labels[line.replace(':', '')] = address;
+          return;
+        }
+
+        const parts = line.split(/[\s,]+/);
+        const op = parts[0];
+        const instruction = { op, line };
+
+        try {
+          switch(op) {
+            case 'MOV':
+              instruction.type = 'MOV';
+              instruction.rd = parseInt(parts[1][1]);
+              if (parts[2].startsWith('#')) {
+                instruction.imm = parseInt(parts[2].substring(1)) & 0xF;
+              } else {
+                instruction.rs = parseInt(parts[2][1]);
+              }
+              break;
+            case 'ADD':
+            case 'SUB':
+            case 'AND':
+            case 'OR':
+              instruction.type = 'ALU';
+              instruction.rd = parseInt(parts[1][1]);
+              instruction.rs = parseInt(parts[2][1]);
+              break;
+            case 'CMP':
+              instruction.type = 'CMP';
+              instruction.rs = parseInt(parts[1][1]);
+              break;
+            case 'JMP':
+              instruction.type = 'JMP';
+              instruction.label = parts[1];
+              break;
+            case 'JZ':
+              instruction.type = 'CJMP';
+              instruction.cond = 'Z';
+              instruction.label = parts[1];
+              break;
+            case 'JNZ':
+              instruction.type = 'CJMP';
+              instruction.cond = 'NZ';
+              instruction.label = parts[1];
+              break;
+            case 'LOAD':
+              instruction.type = 'LOAD';
+              instruction.rd = parseInt(parts[1][1]);
+              if (parts[2].startsWith('#')) {
+                instruction.addr = parseInt(parts[2].substring(1)) & 0xF;
+              } else {
+                log(`Invalid addressing in LOAD: ${line}`);
+              }
+              break;
+            case 'STORE':
+              instruction.type = 'STORE';
+              instruction.rs = parseInt(parts[1][1]);
+              if (parts[2].startsWith('#')) {
+                instruction.addr = parseInt(parts[2].substring(1)) & 0xF;
+              } else {
+                log(`Invalid addressing in STORE: ${line}`);
+              }
+              break;
+            default:
+              log(`Unrecognized instruction: ${line}`);
+              return;
+          }
+          uC.program[address++] = instruction;
+        } catch (error) {
+          log(`Error compiling line: "${line}"`);
+        }
+      });
+
+      updateMemoryView();
+      log('Program compiled successfully!');
+      reset();
+    }
+
+    // Executes a single instruction (one step)
+    function step() {
+      if (uC.pc >= uC.program.length) {
+        log('End of program.');
+        return;
+      }
+
+      const instr = uC.program[uC.pc];
+      log(`Executing: ${instr.line}`);
+
+      try {
+        switch(instr.type) {
+          case 'MOV':
+            if (instr.imm !== undefined) {
+              uC.registers[instr.rd] = instr.imm;
+            } else {
+              uC.registers[instr.rd] = uC.registers[instr.rs];
+            }
+            break;
+          case 'ALU':
+            const a = uC.registers[instr.rd];
+            const b = uC.registers[instr.rs];
+            switch(instr.op) {
+              case 'ADD': 
+                uC.registers[instr.rd] = (a + b) & 0xF;
+                uC.flags.carry = (a + b) > 15;
+                break;
+              case 'SUB':
+                uC.registers[instr.rd] = (a - b + 16) & 0xF;
+                uC.flags.carry = a < b;
+                break;
+              case 'AND':
+                uC.registers[instr.rd] = a & b;
+                break;
+              case 'OR':
+                uC.registers[instr.rd] = a | b;
+                break;
+            }
+            uC.flags.zero = uC.registers[instr.rd] === 0;
+            break;
+          case 'CMP':
+            uC.flags.zero = uC.registers[instr.rs] === 0;
+            break;
+          case 'JMP':
+            if(uC.labels[instr.label] !== undefined) {
+              uC.pc = uC.labels[instr.label] - 1;
+            } else {
+              log(`Label not found: ${instr.label}`);
+            }
+            break;
+          case 'CJMP':
+            if ((instr.cond === 'Z' && uC.flags.zero) ||
+                (instr.cond === 'NZ' && !uC.flags.zero)) {
+              if(uC.labels[instr.label] !== undefined) {
+                uC.pc = uC.labels[instr.label] - 1;
+              } else {
+                log(`Label not found: ${instr.label}`);
+              }
+            }
+            break;
+          case 'LOAD':
+            uC.registers[instr.rd] = uC.memory[instr.addr];
+            break;
+          case 'STORE':
+            uC.memory[instr.addr] = uC.registers[instr.rs];
+            break;
+        }
+      } catch (error) {
+        log(`Error executing instruction: ${instr.line}`);
+      }
+
+      // Increment PC with 4-bit wrap-around
+      uC.pc = (uC.pc + 1) % 16;
+      updateDisplay();
+      updateMemoryView();
+    }
+
+    // Runs the program continuously
+    function run() {
+      if (uC.running) return;
+      uC.running = true;
+      const runner = () => {
+        if (uC.running && uC.pc < uC.program.length) {
+          step();
+          setTimeout(runner, uC.speed);
+        } else {
+          uC.running = false;
+        }
+      };
+      runner();
+    }
+
+    // Stops program execution
+    function stop() {
+      uC.running = false;
+      log('Execution stopped.');
+    }
+
+    // Sets execution speed
+    function setSpeed(speed) {
+      uC.speed = parseInt(speed);
+    }
+
+    // Resets registers, PC and flags
+    function reset() {
+      uC.registers.fill(0);
+      uC.pc = 0;
+      uC.flags = { zero: 0, carry: 0, overflow: 0 };
+      updateDisplay();
+      log('System reset.');
+    }
+
+    // Updates the display of registers, flags and PC
+    function updateDisplay() {
+      uC.registers.forEach((val, idx) => {
+        document.getElementById(`R${idx}`).textContent =
+          `R${idx}: ${val.toString(2).padStart(4, '0')} (${val})`;
+      });
+      document.getElementById('flags').textContent =
+        `Zero: ${uC.flags.zero} | Carry: ${uC.flags.carry} | Overflow: ${uC.flags.overflow}`;
+      document.getElementById('pc').textContent =
+        `PC: 0x${uC.pc.toString(16).toUpperCase()}`;
+    }
+
+    // Updates the Memory Map view
+    function updateMemoryView() {
+      const memoryDiv = document.getElementById('memory');
+      memoryDiv.innerHTML = '';
+      uC.memory.forEach((val, addr) => {
+        const cell = document.createElement('div');
+        cell.className = 'memory-cell';
+        cell.textContent = val.toString(16).toUpperCase();
+        if (addr === uC.pc) cell.classList.add('highlight');
+        memoryDiv.appendChild(cell);
+      });
+    }
+
+    // Logs messages to the console element
+    function log(message) {
+      const consoleElement = document.getElementById('console');
+      consoleElement.innerHTML += `> ${message}\n`;
+      consoleElement.scrollTop = consoleElement.scrollHeight;
+    }
+
+    // Initialize compilation and add keyboard listener (Space for step)
+    compile();
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') step();
+    });
+  </script>
+</body>
+</html>
